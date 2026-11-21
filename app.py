@@ -426,16 +426,18 @@ st.set_page_config(
 )
 # INITIALIZE DATABASE AND DEMO ACCOUNT
 
-try:
-    initialize_user_table()
-    create_demo_user()
+if os.environ.get("LOCAL_PREVIEW") != "true":
 
-except Exception:
-    st.error(
-        "The application could not connect to its database. "
-        "Please try again later."
-    )
-    st.stop()
+    try:
+        initialize_user_table()
+        create_demo_user()
+
+    except Exception:
+        st.error(
+            "The application could not connect to its database. "
+            "Please try again later."
+        )
+        st.stop()
 
 # AUTHENTICATION
 
@@ -443,33 +445,54 @@ st.session_state.setdefault("authenticated", False)
 
 if not st.session_state["authenticated"]:
 
-    st.markdown(
-        "<h2 style='color:#123B5D;'>Welcome to K&B Solutions</h2>",
-        unsafe_allow_html=True
-    )
+    login_col1, login_col2, login_col3 = st.columns([1, 1.2, 1])
 
-    st.subheader("Invoice Extractor Login")
+    with login_col2:
 
-    with st.form("login_form"):
-        username = st.text_input("Username")
-        password = st.text_input("Password", type="password")
+        with st.container(border=True):
 
-        login_submitted = st.form_submit_button(
-            "Log In",
-            use_container_width=True
-        )
+            st.markdown(
+                "<h2 style='color:#123B5D; text-align:center;'>"
+                "K&B | Solutions</h2>",
+                unsafe_allow_html=True
+            )
 
-    if login_submitted:
-        try:
-            if authenticate_user(username.strip(), password):
-                st.session_state["authenticated"] = True
-                st.session_state["username"] = username.strip()
-                st.rerun()
-            else:
-                st.error("Incorrect username or password.")
+            st.markdown(
+                "<h3 style='color:#123B5D; text-align:center;'>"
+                "Welcome Back</h3>",
+                unsafe_allow_html=True
+            )
 
-        except Exception:
-            st.error("Unable to connect to the login service. Please try again.")
+            st.markdown(
+                "<p style='color:#526477; text-align:center;'>"
+                "Invoice Extractor Login</p>",
+                unsafe_allow_html=True
+            )
+
+            with st.form("login_form"):
+
+                username = st.text_input("Username")
+                password = st.text_input("Password", type="password")
+
+                login_submitted = st.form_submit_button(
+                    "Log In",
+                    use_container_width=True
+                )
+
+            if login_submitted:
+                try:
+                    if authenticate_user(username.strip(), password):
+                        st.session_state["authenticated"] = True
+                        st.session_state["username"] = username.strip()
+                        st.rerun()
+                    else:
+                        st.error("Incorrect username or password.")
+
+                except Exception:
+                    st.error(
+                        "Unable to connect to the login service. "
+                        "Please try again."
+                    )
 
     st.stop()
 
