@@ -2,9 +2,129 @@
 import streamlit as st
 import pandas as pd
 import re
+import os
+import hashlib
+import hmac
+import secrets
+from urllib.parse import urlparse, unquote
+import pymysql
 
 
+# DATABASE CONNECTION AND AUTHENTICATION
 
+def get_database_connection():
+    database_url = os.environ.get("DATABASE_URL")
+
+    if not database_url:
+        raise RuntimeError("Database connection is not configured.")
+
+    parsed_url = urlparse(database_url)
+
+    return pymysql.connect(
+        host=parsed_url.hostname,
+        port=parsed_url.port or 3306,
+        user=unquote(parsed_url.username or ""),
+        password=unquote(parsed_url.password or ""),
+        database=parsed_url.path.lstrip("/"),
+        charset="utf8mb4",
+        cursorclass=pymysql.cursors.DictCursor,
+        connect_timeout=10
+    )
+
+
+def hash_password(password):
+    salt = secrets.token_hex(16)
+
+    password_hash = hashlib.pbkdf2_hmac(
+        "sha256",
+        password.encode("utf-8"),
+        salt.encode("utf-8"),
+        600000
+    ).hex()
+
+    return f"{salt}${password_hash}"
+
+
+def verify_password(password, stored_hash):
+    try:
+        salt, original_hash = stored_hash.split("$")
+
+        new_hash = hashlib.pbkdf2_hmac(
+            "sha256",
+            password.encode("utf-8"),
+            salt.encode("utf-8"),
+            600000
+        ).hex()
+
+        return hmac.compare_digest(new_hash, original_hash)
+
+    except (ValueError, AttributeError):
+        return False
+
+
+def initialize_user_table():
+    connection = get_database_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    username VARCHAR(100) NOT NULL UNIQUE,
+                    password_hash VARCHAR(255) NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
+        connection.commit()
+
+    finally:
+        connection.close()
+
+def create_demo_user():
+    username = os.environ.get("DEMO_USERNAME")
+    password = os.environ.get("DEMO_PASSWORD")
+
+    if not username or not password:
+        return
+
+    connection = get_database_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT IGNORE INTO users (username, password_hash)
+                VALUES (%s, %s)
+                """,
+                (username, hash_password(password))
+            )
+
+        connection.commit()
+
+    finally:
+        connection.close()
+
+
+def authenticate_user(username, password):
+    connection = get_database_connection()
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT password_hash FROM users WHERE username = %s",
+                (username,)
+            )
+
+            user = cursor.fetchone()
+
+        if user and verify_password(password, user["password_hash"]):
+            return True
+
+        return False
+
+    finally:
+        connection.close()
 
 def extract_invoice_fields(text):
     """Extract invoice fields and flag values that need review."""
@@ -304,6 +424,65 @@ st.set_page_config(
     page_icon="🧾",
     layout="wide"
 )
+# INITIALIZE DATABASE AND DEMO ACCOUNT
+
+try:
+    initialize_user_table()
+    create_demo_user()
+
+except Exception:
+    st.error(
+        "The application could not connect to its database. "
+        "Please try again later."
+    )
+    st.stop()
+
+# AUTHENTICATION
+
+st.session_state.setdefault("authenticated", False)
+
+if not st.session_state["authenticated"]:
+
+    st.markdown(
+        "<h2 style='color:#123B5D;'>Welcome to K&B Solutions</h2>",
+        unsafe_allow_html=True
+    )
+
+    st.subheader("Invoice Extractor Login")
+
+    with st.form("login_form"):
+        username = st.text_input("Username")
+        password = st.text_input("Password", type="password")
+
+        login_submitted = st.form_submit_button(
+            "Log In",
+            use_container_width=True
+        )
+
+    if login_submitted:
+        try:
+            if authenticate_user(username.strip(), password):
+                st.session_state["authenticated"] = True
+                st.session_state["username"] = username.strip()
+                st.rerun()
+            else:
+                st.error("Incorrect username or password.")
+
+        except Exception:
+            st.error("Unable to connect to the login service. Please try again.")
+
+    st.stop()
+
+# LOGOUT BUTTON
+
+top_col1, top_col2 = st.columns([5, 1])
+
+with top_col2:
+    if st.button("Log Out", use_container_width=True):
+        st.session_state["authenticated"] = False
+        st.session_state.pop("username", None)
+        st.session_state["current_page"] = "Upload Invoices"
+        st.rerun()
 # Page navigation
 if "current_page" not in st.session_state:
     st.session_state["current_page"] = "Upload Invoices"
