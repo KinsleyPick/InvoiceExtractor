@@ -209,7 +209,7 @@ def extract_invoice_fields(text):
             return False
 
         return True
-        
+
     # AWS vendor: identify the company named in the service statement.
     aws_vendor_match = re.search(
         r"All AWS Services are sold by\s+(Amazon Web Services, Inc\.)",
@@ -238,21 +238,40 @@ def extract_invoice_fields(text):
                     break
 
     # Date: recognize common US formats and ISO dates.
+    # Prioritize the date specifically labeled Invoice Date.
+
     date_match = re.search(
-        r"\b("
+        r"\bInvoice\s+Date\s*:?\s*("
         r"\d{4}-\d{1,2}-\d{1,2}"
         r"|"
         r"\d{1,2}/\d{1,2}/\d{2,4}"
         r"|"
-        r"[A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4}"
+        r"[A-Za-z]{3,9}\s+\d{1,2}\s*,?\s*\d{4}"
         r"|"
         r"\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4}"
-        r")\b",
-        text
+        r")",
+        text,
+        re.IGNORECASE
     )
 
+    # Fall back to the existing general date recognition
+    # if no Invoice Date label is found.
+    if not date_match:
+        date_match = re.search(
+            r"\b("
+            r"\d{4}-\d{1,2}-\d{1,2}"
+            r"|"
+            r"\d{1,2}/\d{1,2}/\d{2,4}"
+            r"|"
+            r"[A-Za-z]{3,9}\s+\d{1,2}\s*,?\s*\d{4}"
+            r"|"
+            r"\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4}"
+            r")\b",
+            text
+        )
+
     if date_match:
-        fields["Date"] = date_match.group(1)
+        fields["Date"] = date_match.group(1).strip()
 
     # Monetary amounts: recognize amounts after labels,
     # including amounts on the following line.
@@ -353,6 +372,30 @@ def extract_invoice_fields(text):
 
     if tax_match:
         fields["Tax"] = tax_match.group(1)
+    
+
+    # AWS summary: extract invoice-level amounts,
+    # rather than individual service charges.
+    aws_summary_pattern = (
+        r"\bAWS\s+Service\s+Charges\s+\$?([\d,]+\.\d{2})\s+"
+        r"Charges\s+\$?([\d,]+\.\d{2})\s+"
+        r"Credits\s+\$?([\d,]+\.\d{2})\s+"
+        r"Tax\s*\*?\s*\$?([\d,]+\.\d{2})"
+        r".*?\bTotal\s+for\s+this\s+invoice\s+\$?([\d,]+\.\d{2})"
+    )
+
+
+    aws_summary_match = re.search(
+        aws_summary_pattern,
+        text,
+        re.IGNORECASE | re.DOTALL
+    )
+
+    if aws_summary_match:
+        fields["Subtotal"] = aws_summary_match.group(2)
+        fields["Tax"] = aws_summary_match.group(4)
+        fields["Total"] = aws_summary_match.group(5)
+
 
     # Total: recognize Total, Total Due, and similar labels.
     total_pattern = (
@@ -367,7 +410,7 @@ def extract_invoice_fields(text):
         re.IGNORECASE
     )
 
-    if total_match:
+    if total_match and not aws_summary_match:
         fields["Total"] = total_match.group(1)
 
     return fields
