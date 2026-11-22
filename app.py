@@ -209,8 +209,18 @@ def extract_invoice_fields(text):
             return False
 
         return True
+        
+    # AWS vendor: identify the company named in the service statement.
+    aws_vendor_match = re.search(
+        r"All AWS Services are sold by\s+(Amazon Web Services, Inc\.)",
+        text,
+        re.IGNORECASE
+    )
 
-    if invoice_line_index is not None:
+    if aws_vendor_match:
+        fields["Vendor"] = aws_vendor_match.group(1).strip()
+
+    if invoice_line_index is not None and fields["Vendor"] is None:
 
         # First, look AFTER the invoice heading.
         # This supports Northwind and SuperStore layouts.
