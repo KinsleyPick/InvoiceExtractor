@@ -468,7 +468,7 @@ def extract_invoice_fields(text):
     # Global Wholesaler: recognize tax shown on the line
     # following the percentage and taxable amount.
     global_wholesaler_tax_match = re.search(
-        r"\bTax\s+\d+(?:\.\d+)?%\s+on\s+\$?[\d,]+\.\d{2}"
+        r"\bTax\s+\d+(?:\.\d+)?%\s+on\s+\$?\s*[\d,]+\.\d{2}"
         r"\s+\$?\s*([\d,]+\.\d{2})",
         text,
         re.IGNORECASE
