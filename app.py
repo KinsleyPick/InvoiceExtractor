@@ -294,17 +294,7 @@ def extract_invoice_fields(text):
     if date_match:
         fields["Date"] = date_match.group(1).strip()
 
-    # Global Wholesaler: use the final invoice-level subtotal,
-    # not the individual product section subtotals.
-    global_wholesaler_subtotal_match = re.search(
-        r"\bGlobal Wholesaler\b.*?\bSubtotal\s*:?\s*\$?\s*([\d,]+\.\d{2})",
-        text,
-        re.IGNORECASE | re.DOTALL
-    )
-
-    if global_wholesaler_subtotal_match:
-        fields["Subtotal"] = global_wholesaler_subtotal_match.group(1)
-
+    
     # Monetary amounts: recognize amounts after labels,
     # including amounts on the following line.
     for label in ("Subtotal", "Discount", "Shipping"):
@@ -319,6 +309,25 @@ def extract_invoice_fields(text):
 
         if amount_match:
             fields[label] = amount_match.group(1)
+
+    # Global Wholesaler: select the final invoice-level subtotal
+    # before the vendor block, rather than a product section subtotal.
+    global_wholesaler_layout_match = re.search(
+        r"\bGlobal Wholesaler\s*\n\s*Azure Interior\b",
+        text,
+        re.IGNORECASE
+    )
+
+    if global_wholesaler_layout_match:
+        subtotal_text = text[:global_wholesaler_layout_match.start()]
+        global_wholesaler_subtotals = re.findall(
+            r"\bSubtotal\s*:?\s*\$?\s*([\d,]+\.\d{2})",
+            subtotal_text,
+            re.IGNORECASE
+        )
+
+        if global_wholesaler_subtotals:
+            fields["Subtotal"] = global_wholesaler_subtotals[-1]
 
     # Recognize Promo labels as Discount.
     # Example: PROMO-SAVE10 -$57.00
