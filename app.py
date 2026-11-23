@@ -146,7 +146,7 @@ def extract_invoice_fields(text):
     # Invoice number: require a specific invoice identifier label.
     invoice_patterns = [
         r"\bINVOICE\s+(?:NO\.?|NUMBER)\s*:?\s*([A-Za-z0-9]+(?:[-/][A-Za-z0-9]+)*)",
-        r"\bINVOICE\s*#\s*:?\s*([A-Za-z0-9]+(?:[-/][A-Za-z0-9]+)*)",
+        r"\bINVOICE\s*#\s*:?\s*([A-Za-z0-9_]+(?:[-/][A-Za-z0-9_]+)*)",
         r"\bINVOICE\s*:\s*([A-Za-z0-9]+(?:[-/][A-Za-z0-9]+)*)",
         r"\bINVOICE\s+([A-Za-z0-9]+(?:[-/][A-Za-z0-9]+)*)",
     ]
@@ -352,6 +352,33 @@ def extract_invoice_fields(text):
 
         if fields["Total"] is None:
             fields["Total"] = summary_match.group(3).replace("$", "")
+    
+    # Alternative summary layout:
+    # Amounts appear before Subtotal, Tax, and Total labels.
+    alternative_summary_pattern = (
+        r"(\$?[\d,]+\.\d{2})\s+"
+        r"(\$?[\d,]+\.\d{2})\s+"
+        r"(\$?[\d,]+\.\d{2})\s+"
+        r"Subtotal\s*:?\s*"
+        r"Tax\s*(?:\([^)]*\))?\s*:?\s*"
+        r"Total\s*:?"
+    )
+
+    alternative_summary_match = re.search(
+        alternative_summary_pattern,
+        text,
+        re.IGNORECASE
+    )
+
+    if alternative_summary_match:
+        if fields["Subtotal"] is None:
+            fields["Subtotal"] = alternative_summary_match.group(1).replace("$", "")
+
+        if fields["Tax"] is None:
+            fields["Tax"] = alternative_summary_match.group(2).replace("$", "")
+
+        if fields["Total"] is None:
+            fields["Total"] = alternative_summary_match.group(3).replace("$", "")
 
     
     # Tax: recognize Tax, Sales Tax, and GST labels.
@@ -410,9 +437,9 @@ def extract_invoice_fields(text):
         re.IGNORECASE
     )
 
-    if total_match and not aws_summary_match:
+    if total_match and not aws_summary_match and not alternative_summary_match:
         fields["Total"] = total_match.group(1)
-
+        
     return fields
 
 
