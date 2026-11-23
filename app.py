@@ -219,6 +219,16 @@ def extract_invoice_fields(text):
 
     if aws_vendor_match:
         fields["Vendor"] = aws_vendor_match.group(1).strip()
+    
+    # Seller label: recognize invoices that identify the vendor as Seller.
+    seller_match = re.search(
+        r"^\s*Seller\s*:\s*(.+?)\s*$",
+        text,
+        re.IGNORECASE | re.MULTILINE
+    )
+
+    if seller_match and fields["Vendor"] is None:
+        fields["Vendor"] = seller_match.group(1).strip()
 
     if invoice_line_index is not None and fields["Vendor"] is None:
 
@@ -380,6 +390,30 @@ def extract_invoice_fields(text):
         if fields["Total"] is None:
             fields["Total"] = alternative_summary_match.group(3).replace("$", "")
 
+    # European invoice summary: recognize comma decimal separators.
+    european_summary_pattern = (
+        r"\bSUMMARY\b.*?"
+        r"(\d{1,3}(?:\.\d{3})*,\d{2})\s+"
+        r"(\d{1,3}(?:\.\d{3})*,\d{2})\s+"
+        r"(\d{1,3}(?:\.\d{3})*,\d{2})\s+"
+        r"Total\b"
+    )
+
+    european_summary_match = re.search(
+        european_summary_pattern,
+        text,
+        re.IGNORECASE | re.DOTALL
+    )
+
+    if european_summary_match:
+        if fields["Subtotal"] is None:
+            fields["Subtotal"] = european_summary_match.group(1).replace(".", "").replace(",", ".")
+
+        if fields["Tax"] is None:
+            fields["Tax"] = european_summary_match.group(2).replace(".", "").replace(",", ".")
+
+        if fields["Total"] is None:
+            fields["Total"] = european_summary_match.group(3).replace(".", "").replace(",", ".")
     
     # Tax: recognize Tax, Sales Tax, and GST labels.
     # Supports variable percentages using pct, percent, or %.
@@ -437,9 +471,14 @@ def extract_invoice_fields(text):
         re.IGNORECASE
     )
 
-    if total_match and not aws_summary_match and not alternative_summary_match:
+    if (
+        total_match
+        and not aws_summary_match
+        and not alternative_summary_match
+        and not european_summary_match
+    ):
         fields["Total"] = total_match.group(1)
-        
+
     return fields
 
 
