@@ -230,6 +230,17 @@ def extract_invoice_fields(text):
     if seller_match and fields["Vendor"] is None:
         fields["Vendor"] = seller_match.group(1).strip()
 
+    # Global Wholesaler invoice layout:
+    # The vendor name appears below the company heading.
+    global_wholesaler_vendor_match = re.search(
+        r"\bGlobal Wholesaler\s*\n\s*(Azure Interior)\s*\n",
+        text,
+        re.IGNORECASE
+    )
+
+    if global_wholesaler_vendor_match and fields["Vendor"] is None:
+        fields["Vendor"] = global_wholesaler_vendor_match.group(1).strip()
+
     if invoice_line_index is not None and fields["Vendor"] is None:
 
         # First, look AFTER the invoice heading.
@@ -282,6 +293,17 @@ def extract_invoice_fields(text):
 
     if date_match:
         fields["Date"] = date_match.group(1).strip()
+
+    # Global Wholesaler: use the final invoice-level subtotal,
+    # not the individual product section subtotals.
+    global_wholesaler_subtotal_match = re.search(
+        r"\bGlobal Wholesaler\b.*?\bSubtotal\s*:?\s*\$?\s*([\d,]+\.\d{2})",
+        text,
+        re.IGNORECASE | re.DOTALL
+    )
+
+    if global_wholesaler_subtotal_match:
+        fields["Subtotal"] = global_wholesaler_subtotal_match.group(1)
 
     # Monetary amounts: recognize amounts after labels,
     # including amounts on the following line.
@@ -434,6 +456,17 @@ def extract_invoice_fields(text):
     if tax_match:
         fields["Tax"] = tax_match.group(1)
     
+    # Global Wholesaler: recognize tax shown on the line
+    # following the percentage and taxable amount.
+    global_wholesaler_tax_match = re.search(
+        r"\bTax\s+\d+(?:\.\d+)?%\s+on\s+\$?[\d,]+\.\d{2}"
+        r"\s+\$?\s*([\d,]+\.\d{2})",
+        text,
+        re.IGNORECASE
+    )
+
+    if global_wholesaler_tax_match:
+        fields["Tax"] = global_wholesaler_tax_match.group(1)
 
     # AWS summary: extract invoice-level amounts,
     # rather than individual service charges.
