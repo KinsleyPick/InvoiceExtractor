@@ -394,6 +394,32 @@ def extract_invoice_fields(text):
         if fields["Total"] is None:
             fields["Total"] = summary_match.group(3).replace("$", "")
     
+    # SuperStore layout with Discount:
+    # Four amounts appear before Subtotal, Discount, Shipping, and Total.
+
+    superstore_discount_summary_pattern = (
+        r"(\$?\s*[\d,]+\.\d{2})\s+"
+        r"(\$?\s*[\d,]+\.\d{2})\s+"
+        r"(\$?\s*[\d,]+\.\d{2})\s+"
+        r"(\$?\s*[\d,]+\.\d{2})\s+"
+        r"Subtotal\s*:?\s*"
+        r"Discount(?:\s*\([^)]*\))?\s*:?\s*"
+        r"Shipping\s*:?\s*"
+        r"Total\s*:?"
+    )
+
+    superstore_discount_summary_match = re.search(
+        superstore_discount_summary_pattern,
+        text,
+        re.IGNORECASE
+    )
+
+    if superstore_discount_summary_match:
+        fields["Subtotal"] = superstore_discount_summary_match.group(1).replace("$", "").strip()
+        fields["Discount"] = superstore_discount_summary_match.group(2).replace("$", "").strip()
+        fields["Shipping"] = superstore_discount_summary_match.group(3).replace("$", "").strip()
+        fields["Total"] = superstore_discount_summary_match.group(4).replace("$", "").strip()
+
     # Alternative summary layout:
     # Amounts appear before Subtotal, Tax, and Total labels.
     alternative_summary_pattern = (
